@@ -9,6 +9,33 @@ from typing import List, Dict
 from ev2gym.models.ev import EV
 
 
+def sample_arrival_and_desired_capacity(env, battery_capacity, required_energy):
+    min_battery_capacity = env.config["ev"]["min_battery_capacity"]
+    if battery_capacity <= 2 * min_battery_capacity:
+        min_arrival_capacity = 1
+    else:
+        min_arrival_capacity = min_battery_capacity
+
+    max_arrival_capacity = battery_capacity - required_energy
+    if max_arrival_capacity <= min_arrival_capacity:
+        initial_battery_capacity = min_arrival_capacity
+    else:
+        initial_battery_capacity = np.random.uniform(
+            min_arrival_capacity, max_arrival_capacity)
+
+    desired_capacity = min(
+        battery_capacity,
+        initial_battery_capacity + required_energy
+    )
+
+    return initial_battery_capacity, desired_capacity
+
+
+def arrival_time_label(hour, minute, step_minutes):
+    minute = (minute // step_minutes) * step_minutes
+    return f'{hour:02d}:{minute:02d}'
+
+
 def get_statistics(env) -> Dict:
     total_ev_served = np.array(
         [cs.total_evs_served for cs in env.charging_stations]).sum()
@@ -191,14 +218,8 @@ def spawn_single_EV(env,
     # required_energy = env.df_energy_demand[scenario].iloc[np.random.randint(
     #     0, 100, size=1)].values[0]  # kWh
 
-    # roound minute to 30 or 0
-    if minute < 30:
-        minute = 0
-    else:
-        minute = 30
-
     # required energy dependent on time of arrival
-    arrival_time = f'{hour:02d}:{minute:02d}'
+    arrival_time = arrival_time_label(hour, minute, env.timescale)
 
     required_energy_mean = env.df_req_energy[
         (env.df_req_energy['Arrival Time'] == arrival_time)
@@ -217,16 +238,8 @@ def spawn_single_EV(env,
     else:
         battery_capacity = env.config["ev"]["battery_capacity"]
 
-    if battery_capacity < required_energy:
-        initial_battery_capacity = np.random.randint(1, battery_capacity)
-    else:
-        initial_battery_capacity = battery_capacity - required_energy
-
-    if initial_battery_capacity > env.config["ev"]['desired_capacity'] * battery_capacity:
-        initial_battery_capacity = np.random.randint(1, battery_capacity)
-
-    if initial_battery_capacity < env.config["ev"]['min_battery_capacity'] and battery_capacity > 2*env.config["ev"]['min_battery_capacity']:
-        initial_battery_capacity = env.config["ev"]['min_battery_capacity']
+    initial_battery_capacity, desired_capacity = sample_arrival_and_desired_capacity(
+        env, battery_capacity, required_energy)
 
     # time of stay dependent on time of arrival
     time_of_stay_mean = env.df_time_of_stay_vs_arrival[(
@@ -311,8 +324,7 @@ def spawn_single_EV(env,
                   transition_soc_multiplier=transition_soc_multiplier,
                   battery_capacity=battery_capacity,
                   min_battery_capacity = env.config["ev"]["min_battery_capacity"],
-                  desired_capacity=env.config["ev"]['desired_capacity'] *
-                  battery_capacity,
+                  desired_capacity=desired_capacity,
                   time_of_arrival=step+1,
                   time_of_departure=int(
                       time_of_stay + step + 3),
@@ -324,8 +336,7 @@ def spawn_single_EV(env,
                   location=cs_id,
                   battery_capacity_at_arrival=initial_battery_capacity,
                   battery_capacity=battery_capacity,
-                  desired_capacity=env.config["ev"]['desired_capacity'] *
-                  battery_capacity,
+                  desired_capacity=desired_capacity,
                   min_emergency_battery_capacity=min_emergency_battery_capacity,
                   max_ac_charge_power=env.config["ev"]['max_ac_charge_power'],
                   min_ac_charge_power=env.config["ev"]['min_ac_charge_power'],
@@ -358,12 +369,6 @@ def spawn_single_EV_GF(env,
     This function spawns a single EV and returns it
     '''
 
-    # round minute to 30 or 0
-    if minute < 30:
-        minute = 0
-    else:
-        minute = 30
-
     if day < 5:
         size = env.df_req_energy_weekday.shape[1]
         required_energy = 2 * \
@@ -394,16 +399,8 @@ def spawn_single_EV_GF(env,
     else:
         battery_capacity = env.config["ev"]["battery_capacity"]
 
-    if battery_capacity < required_energy:
-        initial_battery_capacity = np.random.randint(1, battery_capacity)
-    else:
-        initial_battery_capacity = battery_capacity - required_energy
-
-    if initial_battery_capacity > env.config["ev"]['desired_capacity'] * battery_capacity:
-        initial_battery_capacity = np.random.randint(1, battery_capacity)
-
-    if initial_battery_capacity < env.config["ev"]['min_battery_capacity'] and battery_capacity > 2*env.config["ev"]['min_battery_capacity']:
-        initial_battery_capacity = env.config["ev"]['min_battery_capacity']
+    initial_battery_capacity, desired_capacity = sample_arrival_and_desired_capacity(
+        env, battery_capacity, required_energy)
 
     # turn from minutes to steps
     time_of_stay = time_of_stay // env.timescale + 1
@@ -440,8 +437,7 @@ def spawn_single_EV_GF(env,
                                           (np.random.rand()+0.00001)/5, 3),  # [0.7-0.9]
                   transition_soc_multiplier=transition_soc_multiplier,
                   battery_capacity=battery_capacity,
-                  desired_capacity=env.config["ev"]['desired_capacity'] *
-                  battery_capacity,
+                  desired_capacity=desired_capacity,
                   min_battery_capacity=env.config["ev"]["min_battery_capacity"],
                   time_of_arrival=step+1,
                   time_of_departure=int(
@@ -454,8 +450,7 @@ def spawn_single_EV_GF(env,
                   location=cs_id,
                   battery_capacity_at_arrival=initial_battery_capacity,
                   battery_capacity=battery_capacity,
-                  desired_capacity=env.config["ev"]['desired_capacity'] *
-                  battery_capacity,
+                  desired_capacity=desired_capacity,
                   max_ac_charge_power=env.config["ev"]['max_ac_charge_power'],
                   min_ac_charge_power=env.config["ev"]['min_ac_charge_power'],
                   max_dc_charge_power=env.config["ev"]['max_dc_charge_power'],

@@ -9,13 +9,11 @@ Volume 19, 2025, 100457, ISSN 2666-5468, https://doi.org/10.1016/j.egyai.2024.10
 
 import copy as cp
 import numpy as np
-import pandapower as pp
 import pandas as pd
 import pickle
 import time
 
 from ev2gym.models.grid_utility.grid_tensor import GridTensor
-from ev2gym.models.grid_utility.grid_utils import create_pandapower_net
 from ev2gym.models.data_augment import DataGenerator, get_pv_load
 
 import pkg_resources
@@ -56,6 +54,7 @@ class PowerGrid():
 
         elif self.algorithm == "PandaPower":
             # Logic for initializing with PandaPower
+            from ev2gym.models.grid_utility.grid_utils import create_pandapower_net
             self.net = create_pandapower_net(self.network_info)
         else:
             raise ValueError(

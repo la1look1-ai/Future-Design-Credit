@@ -9,7 +9,7 @@ from ev2gym.baselines.mpc.eMPC_v2 import eMPC_V2G_v2, eMPC_G2V_v2
 
 from ev2gym.rl_agent.action_wrappers import BinaryAction, ThreeStep_Action, Rescale_RepairLayer
 
-from ev2gym.baselines.mpc.V2GProfitMax import V2GProfitMaxOracle
+from ev2gym.baselines.mpc.V2GProfitMax import V2GProfitMaxOracle, V2GProfitMaxMPC, V2GProfitMaxMPCGurobi
 
 from ev2gym.baselines.heuristics import RoundRobin, ChargeAsLateAsPossible, ChargeAsFastAsPossible
 from ev2gym.baselines.heuristics import ChargeAsFastAsPossibleToDesiredCapacity, RandomAgent
@@ -24,15 +24,12 @@ def eval():
     Runs an evaluation of the ev2gym environment.
     """
 
-    save_plots = True
+    save_plots = False
 
     replay_path = "./replay/replay_sim_2024_07_05_106720.pkl"
     replay_path = None
 
-    config_file = "ev2gym/example_config_files/PublicPST.yaml"
     config_file = "ev2gym/example_config_files/V2GProfitMax.yaml"
-    config_file = "ev2gym/example_config_files/V2GProfitPlusLoads.yaml"
-    config_file = "ev2gym/example_config_files/V2Ggrid.yaml"
 
     env = EV2Gym(config_file=config_file,
                  load_from_replay_path=replay_path,
@@ -48,14 +45,14 @@ def eval():
     # agent = OCMF_V2G(env, control_horizon=30, verbose=True)
     # agent = OCMF_G2V(env, control_horizon=25, verbose=True)
     # agent = eMPC_V2G(env, control_horizon=15, verbose=False)
-    # agent = V2GProfitMaxOracle(env,verbose=True)
+    agent = V2GProfitMaxMPCGurobi(env, verbose=False)
     # agent = PowerTrackingErrorrMin(new_replay_path)
     # agent = eMPC_G2V(env, control_horizon=15, verbose=False)
     # agent = eMPC_V2G_v2(env, control_horizon=10, verbose=False)        
     # agent = RoundRobin(env, verbose=False)
     # agent = ChargeAsLateAsPossible(verbose=False)
     # agent = ChargeAsFastAsPossible()
-    agent = RandomAgent(verbose=False)
+    # agent = RandomAgent(verbose=False)
     # agent = ChargeAsFastAsPossibleToDesiredCapacity()
     rewards = []
 

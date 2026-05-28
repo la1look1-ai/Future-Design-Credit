@@ -47,6 +47,7 @@ class PowerTrackingErrorrMin():
 
         ev_max_ch_power = replay.ev_max_ch_power  # * self.dt
         ev_max_dis_power = replay.ev_max_dis_power  # * self.dt
+        ev_des_energy = replay.ev_des_energy
         u = replay.u
         energy_at_arrival = replay.energy_at_arrival
         ev_arrival = replay.ev_arrival
@@ -312,24 +313,12 @@ class PowerTrackingErrorrMin():
 
         # time of departure of EVs
         for t in range(self.sim_length):
-            # flag = False
-            # for i in range(self.n_cs):
-
-            # total_soc[t] = gp.quicksum(energy[p, i, t]
-            #                            for p in range(self.number_of_ports_per_cs)
-            #                            if t_dep[p, i, t] == 1)
-            # for p in range(self.number_of_ports_per_cs):
-            #     # if t_dep[p, i, t] == 1:
-            #     #     # total_soc[t] += energy[p, i, t-1]
-            #     #     flag = True
-            # input(f'Energy at departure: {t_dep[p,i,t]}')
-            # self.m.addLConstr((energy[p, i, t] >= 15),
-            #                 #    ev_des_energy[p, i, t]),
-            #                   name=f'ev_departure_energy.{p}.{i}.{t}')
-            # else:
-            #     total_soc[t] = 0
-            # if not flag:
-            # total_soc[t] = 0
+            for i in range(self.n_cs):
+                for p in range(self.number_of_ports_per_cs):
+                    if t_dep[p, i, t] == 1 and ev_des_energy[p, i, t] > 0:
+                        self.m.addLConstr(
+                            energy[p, i, t] >= ev_des_energy[p, i, t],
+                            name=f'ev_departure_energy.{p}.{i}.{t}')
 
             total_soc[t] = gp.quicksum(energy[p, i, t]
                                        for p in range(self.number_of_ports_per_cs)

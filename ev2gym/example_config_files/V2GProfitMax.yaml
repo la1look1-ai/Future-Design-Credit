@@ -4,13 +4,13 @@
 # Simulation Parameters
 ##############################################################################
 timescale: 15 # in minutes per step
-simulation_length: 112 #90 # in steps per simulation
+simulation_length: 96 #90 # in steps per simulation
 
 ##############################################################################
 # Date and Time
 ##############################################################################
 # Year, month, 
-year: 2022 # 2015-2023
+year: 2025 # 2015-2025
 month: 1 # 1-12
 day: 17 # 1-31
 # Whether to get a random date every time the environment is reset
@@ -19,7 +19,7 @@ random_hour: False # True or False
 
 # Simulation Starting Time
 # Hour and minute do not change after the environment has been reset
-hour: 5 # Simulation starting hour (24 hour format)
+hour: 6 # Simulation starting hour (24 hour format)
 minute: 0 # Simulation starting minute (0-59)
 
 # Simulate weekdays, weekends, or both
@@ -28,18 +28,34 @@ simulation_days: weekdays # weekdays, weekends, or both
 # EV Spawn Behavior
 scenario: workplace # public, private, or workplace
 spawn_multiplier: 5 # 1 is default, the higher the number the more EVs spawn. Play somewhere between 3-7. With 1 often only 1/5 EVs show up.
+ev_spawn_files:
+  # Korean profiles built from KEPCO Seoul charging-session data.
+  # Scenario labels are estimated from charger name/address keywords.
+  arrival_weekday: ./ev2gym/data/korea_distribution_of_arrival.csv
+  arrival_weekend: ./ev2gym/data/korea_distribution_of_arrival_weekend.csv
+  demand: ./ev2gym/data/korea_mean_demand_per_arrival.csv
+  session_length: ./ev2gym/data/korea_mean_session_length_per.csv
 
 ##############################################################################
 # Prices
 ##############################################################################
 discharge_price_factor: 1 # how many times more abs(expensive/cheaper) it is to discharge than to charge. Are similar, discharging cost could be a bit higher.
-
+charge_price_file: ./ev2gym/data/Korea_KEPCO_EV_high_voltage_2025_ev2gym.csv
+# Put one year of hourly SMP data here to use SMP as the V2G discharge sale price.
+# Keep the same columns as the existing price CSV and store prices as KRW/kWh * 1000.
+discharge_price_file: ./ev2gym/data/Korea_SMP_2025_ev2gym.csv
+# Optional. If None, the loader builds a forecast from the recent four weeks
+# of the same weekday and hour. MPC uses this only for future, unpublished SMP.
+discharge_forecast_price_file: None
+smp_publish_interval_minutes: 60
+forecast_horizon_minutes: 240
+mpc_reoptimize_minutes: 15
 
 ##############################################################################
 # Distribution Network Settings
 ##############################################################################
 v2g_enabled: True # True or False
-number_of_charging_stations: 25 # Play somewhere 5-20
+number_of_charging_stations: 10 # Play somewhere 5-20
 number_of_transformers: 1 # if simulate_grid is True then this value is overwritten by the topology file
 number_of_ports_per_cs: 1
 # Provide path if you want to load a specific charging topology
@@ -90,7 +106,7 @@ solar_power:
 
 # Whether to include demand response in the transformer power limit
 demand_response:
-  include: False # True or False
+  include: True # True or False
   events_per_day: 1
   #How much of the transformer power limit can be used for demand response
   event_capacity_percentage_mean: 35 # (in percentage +/- %) reduction
@@ -117,21 +133,24 @@ ev_specs_file: ./ev2gym/data/korea_ev_specs_top7.json # path to the file with th
 
 # Default Transformer model
 transformer:
-  max_power: 100 # in kW
+  max_power: 200 # in kW
 
 # Default Charging Station model
+# Gridwiz Skyblue 7: 7kW AC bidirectional V2G charger
+# Public product spec: 220VAC / 60Hz / 32A / 7kW charge and discharge,
+# Type 1 connector, ISO 15118-20 V2G support.
 charging_station:  
   min_charge_current: 0 # Amperes
   max_charge_current: 32 # Amperes
   min_discharge_current: 0 # Amperes (actual value <=0)
   max_discharge_current: -32 # Amperes (actual value <=0)
-  voltage: 400 # Line-Line Voltage in Volts
-  phases: 3 # 1,2, or 3
+  voltage: 220 # Volts
+  phases: 1 # 1,2, or 3
 
 # Default EV model
 ev:
   #The following values are used if "heterogeneous_ev_specs = False"
-  battery_capacity: 50 # in kWh
+  battery_capacity: 65.63 # in kWh, weighted average of korea_ev_specs_top7
   max_ac_charge_power: 11 # in kW
   min_ac_charge_power: 0 # in kW
   max_dc_charge_power: 50 # in kW
@@ -143,9 +162,12 @@ ev:
   transition_soc: 1 # 0-1 (0% - 100%)
 
   #The following values are also used if "heterogeneous_ev_specs = True"
-  min_battery_capacity: 5 # in kWh
-  min_time_of_stay: 180 # in minutes
-  min_emergency_battery_capacity: 25 # in kWh # a value that is monitore but not enforced!
-  desired_capacity: 1 # in (0-1) (0% - 100%)
+  min_battery_capacity: 15 # in kWh
+  min_time_of_stay: 480 # in minutes
+  min_emergency_battery_capacity: 15 # in kWh # a value that is monitore but not enforced!
+  # For Korean charging-session profiles, departure target is built in code as
+  # arrival battery + sampled required charging energy. This value is kept only
+  # as a fallback for legacy/default EV generation paths.
+  desired_capacity: 0.9 # in (0-1) (0% - 100%)
   #if trasition_soc is < 1, the curve of the line is affected by:
   transition_soc_multiplier: 5 # default 1 (the higher the number the shorter the effect of CCCV region)

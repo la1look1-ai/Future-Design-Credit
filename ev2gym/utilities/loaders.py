@@ -1,4 +1,4 @@
-'''
+﻿'''
 This file contains the loaders for the EV City environment.
 '''
 
@@ -51,10 +51,18 @@ def load_ev_spawn_scenarios(env) -> None:
 
         return
 
-    df_arrival_week_file = pkg_resources.resource_filename(
-        'ev2gym', 'data/distribution-of-arrival.csv')
-    df_arrival_weekend_file = pkg_resources.resource_filename(
-        'ev2gym', 'data/distribution-of-arrival-weekend.csv')
+    ev_spawn_files = env.config.get('ev_spawn_files', {})
+
+    def spawn_file_path(key, default_package_path):
+        configured_path = ev_spawn_files.get(key)
+        if configured_path in [None, 'None', '']:
+            return pkg_resources.resource_filename('ev2gym', default_package_path)
+        return configured_path
+
+    df_arrival_week_file = spawn_file_path(
+        'arrival_weekday', 'data/distribution-of-arrival.csv')
+    df_arrival_weekend_file = spawn_file_path(
+        'arrival_weekend', 'data/distribution-of-arrival-weekend.csv')
     df_connection_time_file = pkg_resources.resource_filename(
         'ev2gym', 'data/distribution-of-connection-time.csv')
     df_energy_demand_file = pkg_resources.resource_filename(
@@ -62,10 +70,10 @@ def load_ev_spawn_scenarios(env) -> None:
     time_of_connection_vs_hour_file = pkg_resources.resource_filename(
         'ev2gym', 'data/time_of_connection_vs_hour.npy')
 
-    df_req_energy_file = pkg_resources.resource_filename(
-        'ev2gym', 'data/mean-demand-per-arrival.csv')
-    df_time_of_stay_vs_arrival_file = pkg_resources.resource_filename(
-        'ev2gym', 'data/mean-session-length-per.csv')
+    df_req_energy_file = spawn_file_path(
+        'demand', 'data/mean-demand-per-arrival.csv')
+    df_time_of_stay_vs_arrival_file = spawn_file_path(
+        'session_length', 'data/mean-session-length-per.csv')
 
     env.df_arrival_week = pd.read_csv(df_arrival_week_file)  # weekdays
     env.df_arrival_weekend = pd.read_csv(df_arrival_weekend_file)  # weekends
@@ -400,32 +408,89 @@ def load_electricity_prices(env) -> Tuple[np.ndarray, np.ndarray]:
     if env.load_from_replay_path is not None:
         return env.replay.charge_prices, env.replay.discharge_prices
 
+    def load_price_file(file_path):
+        price_data = pd.read_csv(file_path, sep=',', header=0)
+        drop_columns = [col for col in ['Country', 'Datetime (Local)']
+                        if col in price_data.columns]
+        price_data.drop(drop_columns, inplace=True, axis=1)
+        price_data['datetime'] = pd.DatetimeIndex(price_data['Datetime (UTC)'])
+        price_data['year'] = pd.DatetimeIndex(
+            price_data['Datetime (UTC)']).year
+        price_data['month'] = pd.DatetimeIndex(
+            price_data['Datetime (UTC)']).month
+        price_data['day'] = pd.DatetimeIndex(
+            price_data['Datetime (UTC)']).day
+        price_data['hour'] = pd.DatetimeIndex(
+            price_data['Datetime (UTC)']).hour
+        return price_data
+
+    default_price_file = pkg_resources.resource_filename(
+        'ev2gym', 'data/Korea_KEPCO_EV_high_voltage_2022_ev2gym.csv')
+    charge_price_file = env.config.get('charge_price_file', default_price_file)
+    discharge_price_file = env.config.get(
+        'discharge_price_file', charge_price_file)
+    discharge_forecast_price_file = env.config.get(
+        'discharge_forecast_price_file', None)
+
     if env.price_data is None:
-        # else load historical prices
-        file_path = pkg_resources.resource_filename(
-            'ev2gym', 'data/Korea_KEPCO_EV_high_voltage_2022_ev2gym.csv')
-        env.price_data = pd.read_csv(file_path, sep=',', header=0)
-        # import polars as pl
-        # env.price_data = pl.read_csv(file_path).to_pandas()
+        env.price_data = load_price_file(charge_price_file)
 
-        drop_columns = ['Country', 'Datetime (Local)']
-
-        env.price_data.drop(drop_columns, inplace=True, axis=1)
-        env.price_data['year'] = pd.DatetimeIndex(
-            env.price_data['Datetime (UTC)']).year
-        env.price_data['month'] = pd.DatetimeIndex(
-            env.price_data['Datetime (UTC)']).month
-        env.price_data['day'] = pd.DatetimeIndex(
-            env.price_data['Datetime (UTC)']).day
-        env.price_data['hour'] = pd.DatetimeIndex(
-            env.price_data['Datetime (UTC)']).hour
-
-    # assume charge and discharge prices are the same
     # assume prices are the same for all charging stations
+    if not hasattr(env, 'discharge_price_data'):
+        env.discharge_price_data = load_price_file(discharge_price_file)
 
-    data = env.price_data
+    if not hasattr(env, 'discharge_forecast_price_data'):
+        if discharge_forecast_price_file in [None, 'None', '']:
+            env.discharge_forecast_price_data = None
+        else:
+            env.discharge_forecast_price_data = load_price_file(
+                discharge_forecast_price_file)
+
+    charge_data = env.price_data
+    discharge_data = env.discharge_price_data
+    discharge_forecast_data = env.discharge_forecast_price_data
     charge_prices = np.zeros((env.cs, env.simulation_length))
     discharge_prices = np.zeros((env.cs, env.simulation_length))
+    discharge_forecast_prices = np.zeros((env.cs, env.simulation_length))
+
+    def price_at(data, year, month, day, hour):
+        row = data.loc[(data['year'] == year) & (data['month'] == month) &
+                       (data['day'] == day) & (data['hour'] == hour)]
+        if row.empty:
+            fallback_day = day - 1 if day > 28 else day
+            row = data.loc[(data['year'] == year) & (data['month'] == month) &
+                           (data['day'] == fallback_day) & (data['hour'] == hour)]
+        if row.empty:
+            row = data.loc[(data['month'] == month) &
+                           (data['day'] == fallback_day) & (data['hour'] == hour)]
+        if row.empty:
+            raise ValueError(
+                f'No price found for {year}-{month:02d}-{day:02d} {hour:02d}:00')
+        return row['Price (EUR/MWhe)'].iloc[0]/1000
+
+    def forecast_price_at(data, target_datetime):
+        same_weekday_hour = []
+        for week in range(1, 5):
+            source_datetime = target_datetime - datetime.timedelta(days=7*week)
+            row = data.loc[(data['year'] == source_datetime.year) &
+                           (data['month'] == source_datetime.month) &
+                           (data['day'] == source_datetime.day) &
+                           (data['hour'] == source_datetime.hour)]
+            if not row.empty:
+                same_weekday_hour.append(row['Price (EUR/MWhe)'].iloc[0])
+
+        if same_weekday_hour:
+            return np.mean(same_weekday_hour)/1000
+
+        previous_rows = data.loc[(data['datetime'] < target_datetime) &
+                                 (data['datetime'].dt.weekday == target_datetime.weekday()) &
+                                 (data['hour'] == target_datetime.hour)]
+        if not previous_rows.empty:
+            return previous_rows.tail(4)['Price (EUR/MWhe)'].mean()/1000
+
+        return price_at(data, target_datetime.year, target_datetime.month,
+                        target_datetime.day, target_datetime.hour)
+
     # for every simulation step, take the price of the corresponding hour
     sim_temp_date = env.sim_date
     for i in range(env.simulation_length):
@@ -434,30 +499,23 @@ def load_electricity_prices(env) -> Tuple[np.ndarray, np.ndarray]:
         month = sim_temp_date.month
         day = sim_temp_date.day
         hour = sim_temp_date.hour
-        # find the corresponding price
-        try:
-            charge_prices[:, i] = -data.loc[(data['year'] == year) & (data['month'] == month) & (data['day'] == day) & (data['hour'] == hour),
-                                            'Price (EUR/MWhe)'].iloc[0]/1000  # €/kWh
-            discharge_prices[:, i] = data.loc[(data['year'] == year) & (data['month'] == month) & (data['day'] == day) & (data['hour'] == hour),
-                                              'Price (EUR/MWhe)'].iloc[0]/1000  # €/kWh
-        except:
-            print(
-                'Error: no price found for the given date and hour. Using 2022 prices instead.')
-
-            year = 2022
-            if day > 28:
-                day -= 1
-            # print("Debug:", year, month, day, hour)
-            charge_prices[:, i] = -data.loc[(data['year'] == year) & (data['month'] == month) & (data['day'] == day) & (data['hour'] == hour),
-                                            'Price (EUR/MWhe)'].iloc[0]/1000  # €/kWh
-            discharge_prices[:, i] = data.loc[(data['year'] == year) & (data['month'] == month) & (data['day'] == day) & (data['hour'] == hour),
-                                              'Price (EUR/MWhe)'].iloc[0]/1000  # €/kWh
+        charge_prices[:, i] = -price_at(charge_data, year, month, day, hour)
+        discharge_prices[:, i] = price_at(discharge_data, year, month, day, hour)
+        if discharge_forecast_data is None:
+            discharge_forecast_prices[:, i] = forecast_price_at(
+                discharge_data, sim_temp_date)
+        else:
+            discharge_forecast_prices[:, i] = price_at(
+                discharge_forecast_data, year, month, day, hour)
 
         # step to next
         sim_temp_date = sim_temp_date + \
             datetime.timedelta(minutes=env.timescale)
 
     discharge_prices = discharge_prices * env.config['discharge_price_factor']
+    discharge_forecast_prices = (
+        discharge_forecast_prices * env.config['discharge_price_factor'])
+    env.discharge_forecast_prices = discharge_forecast_prices
     return charge_prices, discharge_prices
 
 
@@ -535,5 +593,3 @@ def load_pv_profiles(env) -> np.ndarray:
         start=dataset_starting_date, periods=data.shape[0], freq=f'{desired_timescale}min')
 
     return data
-
-

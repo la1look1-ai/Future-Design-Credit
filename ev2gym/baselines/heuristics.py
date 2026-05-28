@@ -556,6 +556,67 @@ class RandomAgent():
         action_list = np.random.uniform(
             min_action, max_action, env.number_of_ports)
         return action_list
+
+
+class SafeRandomAgent():
+
+    algo_name = "Safe Random Actions"
+
+    def __init__(self, verbose=False, **kwargs):
+        self.verbose = verbose
+
+    def get_action(self, env) -> np.ndarray:
+        min_action = env.action_space.low
+        max_action = env.action_space.high
+        action_list = np.random.uniform(
+            min_action, max_action, env.number_of_ports)
+
+        port_counter = 0
+        for cs in env.charging_stations:
+            for ev in cs.evs_connected:
+                if ev is not None:
+                    action = action_list[port_counter]
+                    max_charge_power = min(cs.get_max_power(),
+                                           ev.max_ac_charge_power)
+                    max_discharge_power = min(abs(cs.get_min_power()),
+                                              abs(ev.max_discharge_power))
+
+                    if isinstance(ev.charge_efficiency, dict):
+                        charge_efficiency = max(ev.charge_efficiency.values()) / 100
+                    else:
+                        charge_efficiency = ev.charge_efficiency
+
+                    if isinstance(ev.discharge_efficiency, dict):
+                        discharge_efficiency = max(ev.discharge_efficiency.values()) / 100
+                    else:
+                        discharge_efficiency = ev.discharge_efficiency
+
+                    if action >= 0:
+                        projected_capacity = (
+                            ev.current_capacity
+                            + action * max_charge_power * charge_efficiency
+                            * env.timescale / 60
+                        )
+                    else:
+                        projected_capacity = (
+                            ev.current_capacity
+                            + action * max_discharge_power / discharge_efficiency
+                            * env.timescale / 60
+                        )
+
+                    remaining_steps_after_this = max(
+                        ev.time_of_departure - env.current_step, 0)
+                    future_max_charge = (
+                        remaining_steps_after_this * max_charge_power
+                        * charge_efficiency * env.timescale / 60
+                    )
+
+                    if projected_capacity + future_max_charge < ev.desired_capacity:
+                        action_list[port_counter] = 1.0
+
+                port_counter += 1
+
+        return action_list
     
 
 class ChargeAsLateAsPossibleToDesiredCapacity():

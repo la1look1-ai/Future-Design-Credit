@@ -1,0 +1,94 @@
+# Lightweight smoke-test variant of V2Ggrid.yaml for optimizer checks.
+timescale: 15
+simulation_length: 24
+
+year: 2025
+month: 1
+day: 17
+random_day: True
+random_hour: False
+hour: 5
+minute: 0
+simulation_days: weekdays
+
+scenario: public
+spawn_multiplier: 5
+
+discharge_price_factor: 1
+charge_price_file: ./ev2gym/data/Korea_KEPCO_EV_high_voltage_2025_ev2gym.csv
+discharge_price_file: ./ev2gym/data/Korea_SMP_2025_ev2gym.csv
+
+v2g_enabled: True
+number_of_charging_stations: 10
+number_of_transformers: -1
+number_of_ports_per_cs: 1
+charging_network_topology: None
+
+simulate_grid: True
+network_info:
+  vm_pu: 1.0
+  s_base: 1000
+  load_multiplier: 1
+  pv_scale: 80
+  bus_info_file: './ev2gym/data/network_data/node_34/Nodes_34.csv'
+  branch_info_file: './ev2gym/data/network_data/node_34/Lines_34.csv'
+
+pf_solver: 'Laurent'
+
+power_setpoint_enabled: True
+power_setpoint_flexiblity: 80
+
+tr_seed: -1
+inflexible_loads:
+  include: False
+  inflexible_loads_capacity_multiplier_mean: 1
+  forecast_mean: 30
+  forecast_std: 5
+
+solar_power:
+  include: False
+  solar_power_capacity_multiplier_mean: 1
+  forecast_mean: 20
+  forecast_std: 5
+
+demand_response:
+  include: False
+  events_per_day: 1
+  event_capacity_percentage_mean: 35
+  event_capacity_percentage_std: 5
+  event_length_minutes_min: 60
+  event_length_minutes_max: 60
+  event_start_hour_mean: 12
+  event_start_hour_std: 2
+  notification_of_event_minutes: 60
+
+heterogeneous_ev_specs: True
+ev_specs_file: ./ev2gym/data/korea_ev_specs_top7.json
+
+transformer:
+  max_power: 200
+
+charging_station:
+  min_charge_current: 0
+  max_charge_current: 32
+  min_discharge_current: 0
+  max_discharge_current: -32
+  voltage: 220
+  phases: 1
+
+ev:
+  battery_capacity: 65.63
+  max_ac_charge_power: 22
+  min_ac_charge_power: 0
+  max_dc_charge_power: 50
+  max_discharge_power: -22
+  min_discharge_power: 0
+  ev_phases: 3
+  charge_efficiency: 1
+  discharge_efficiency: 1
+  transition_soc: 1
+  min_battery_capacity: 15
+  min_time_of_stay: 200
+  min_emergency_battery_capacity: 15
+  desired_capacity: 0.9
+  transition_soc_multiplier: 50

@@ -199,12 +199,16 @@ class MPC(ABC):
         # prices per KWh for the whole simulation
         self.ch_prices = abs(env.charge_prices[0, :])
         self.disch_prices = abs(env.discharge_prices[0, :])
+        self.disch_forecast_prices = abs(
+            getattr(env, 'discharge_forecast_prices', env.discharge_prices)[0, :])
 
         # extend prices for the control horizon
         self.ch_prices = np.concatenate(
             (self.ch_prices, np.ones(self.control_horizon)*100000))
         self.disch_prices = np.concatenate(
             (self.disch_prices, np.zeros(self.control_horizon)))
+        self.disch_forecast_prices = np.concatenate(
+            (self.disch_forecast_prices, np.zeros(self.control_horizon)))
 
         self.opti_info = []
         self.x_next = self.x_init[:, 0].copy()  # First initial condition
@@ -212,6 +216,7 @@ class MPC(ABC):
         if self.verbose:
             print(f'Prices: {self.ch_prices}')
             print(f' Discharge Prices: {self.disch_prices}')
+            print(f' Forecast Discharge Prices: {self.disch_forecast_prices}')
 
         # parameters for the MPC v2 model
 
@@ -227,6 +232,29 @@ class MPC(ABC):
     @abstractmethod
     def get_action(self, env):
         pass
+
+    def get_discharge_decision_prices(self, t, horizon):
+        '''
+        Uses actual SMP only for the currently published hour and forecast SMP
+        for future hours, matching hourly SMP publication with 15-minute control.
+        '''
+        publish_minutes = self.env.config.get(
+            'smp_publish_interval_minutes', 60)
+        steps_per_publish = int(publish_minutes / self.env.timescale)
+        current_published_block = t // steps_per_publish
+        prices = np.zeros(horizon)
+
+        for i in range(horizon):
+            step = t + i
+            if step // steps_per_publish == current_published_block:
+                prices[i] = self.disch_prices[step]
+            else:
+                prices[i] = self.disch_forecast_prices[step]
+
+        return prices
+
+    def get_charge_decision_prices(self, t, horizon):
+        return self.ch_prices[t:t+horizon]
 
     def update_tr_power(self, t):
         '''
@@ -258,10 +286,20 @@ class MPC(ABC):
         This function updates the transformer power limits, loads and PV generation for the next control horizon based on forecasts.
         '''
 
+        def horizon_slice(values):
+            values = np.asarray(values)
+            out = np.zeros(self.control_horizon)
+            available = values[t:t+self.control_horizon]
+            out[:len(available)] = available
+            return out
+
         for i, tr in enumerate(self.env.transformers):
-            self.tr_power_limit[i, :] = tr.max_power
-            self.tr_pv[i, :] = tr.solar_power
-            self.tr_loads[i, :] = tr.inflexible_load
+            if np.isscalar(tr.max_power):
+                self.tr_power_limit[i, :] = tr.max_power
+            else:
+                self.tr_power_limit[i, :] = horizon_slice(tr.max_power)
+            self.tr_pv[i, :] = horizon_slice(tr.solar_power)
+            self.tr_loads[i, :] = horizon_slice(tr.inflexible_load)
 
     def reconstruct_state(self, t):
         '''
@@ -407,6 +445,38 @@ class MPC(ABC):
 
         self.LB = self.LB.flatten().reshape(-1)
         self.UB = self.UB.flatten().reshape(-1)
+
+    def enforce_departure_capacity(self, env, action):
+        '''
+        Repairs the current action so an EV that is close to departure is not
+        allowed to leave below its requested energy.
+        '''
+        repaired_action = np.array(action, dtype=float).copy()
+        port_index = 0
+
+        for cs in env.charging_stations:
+            for ev in cs.evs_connected:
+                if ev is not None:
+                    required_energy = ev.desired_capacity - ev.current_capacity
+                    remaining_steps = ev.time_of_departure - env.current_step + 1
+
+                    if required_energy > 0 and remaining_steps > 0:
+                        max_power = min(cs.get_max_power(), ev.max_ac_charge_power)
+                        if isinstance(ev.charge_efficiency, dict):
+                            charge_efficiency = max(ev.charge_efficiency.values()) / 100
+                        else:
+                            charge_efficiency = ev.charge_efficiency
+
+                        max_energy_per_step = (
+                            max_power * charge_efficiency * env.timescale / 60)
+                        future_energy = max_energy_per_step * max(remaining_steps - 1, 0)
+
+                        if required_energy >= future_energy - 0.001:
+                            repaired_action[port_index] = 1.0
+
+                port_index += 1
+
+        return repaired_action
 
     def print_info(self, t):
         '''

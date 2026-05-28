@@ -211,6 +211,12 @@ class EV_Charger:
         for i, ev in enumerate(self.evs_connected):
             if ev is not None:
                 if ev.is_departing(self.current_step) is not None:
+                    if ev.current_capacity < ev.desired_capacity - 1.5:
+                        raise ValueError(
+                            f'EV departure constraint violated at CS {self.id} port {i}: '
+                            f'{ev.current_capacity:.2f} kWh available, '
+                            f'{ev.desired_capacity:.2f} kWh required')
+
                     # calculate battery degradation
                     # _,_ = ev.get_battery_degradation()
                     self.evs_connected[i] = None

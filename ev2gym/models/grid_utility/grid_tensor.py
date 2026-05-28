@@ -14,8 +14,6 @@ from scipy.sparse.linalg import inv
 from time import perf_counter
 from numba import njit, set_num_threads
 import warnings
-from ev2gym.models.grid_utility.grid_utils import GPUPowerFlow
-from ev2gym.models.grid_utility.grid_utils import generate_network
 from ev2gym.models.grid_utility.numbarize import (pre_power_flow_tensor,
                                                   power_flow_tensor,
                                                   power_flow_tensor_constant_power,
@@ -129,6 +127,7 @@ class GridTensor:
             self.is_numba_enabled = False
 
         if gpu_mode:
+            from ev2gym.models.grid_utility.grid_utils import GPUPowerFlow
             self.gpu_solver = GPUPowerFlow()
             self.is_gpu_enabled = True
 
@@ -176,6 +175,7 @@ class GridTensor:
         GridTensor: An instance of the GridTensor class.
         """
 
+        from ev2gym.models.grid_utility.grid_utils import generate_network
         nodes_frame, lines_frame = generate_network(nodes=nodes,
                                                     child=child,
                                                     plot_graph=plot_graph,

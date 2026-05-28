@@ -355,21 +355,15 @@ class V2GProfitMaxOracleGB():
             for i in range(self.n_cs):
                 for p in range(self.number_of_ports_per_cs):
                     if t_dep[p, i, t] == 1:
-                        
-                        
-                    #     self.m.addLConstr(energy[p, i, t] >= ev_max_energy_at_departure[p, i, t]-5,
-                    #                       name=f'ev_departure_energy.{p}.{i}.{t}')
-                        
-                        self.m.addConstr(user_satisfaction[p, i, t] == \
-                            (ev_des_energy[p, i, t] * ev_max_energy[p, i, t-1] - energy[p, i, t])**2,
-                            name=f'ev_user_satisfaction.{p}.{i}.{t}')
-                        
-                        
+                        if ev_des_energy[p, i, t] > 0:
+                            self.m.addLConstr(
+                                energy[p, i, t] >= ev_des_energy[p, i, t],
+                                name=f'ev_departure_energy.{p}.{i}.{t}')
 
         # self.m.setObjective(costs - 0.01*power_error.sum(),
         #                     GRB.MAXIMIZE)
 
-        self.m.setObjective(costs - 100 * user_satisfaction.sum(),
+        self.m.setObjective(costs,
                             GRB.MAXIMIZE)
 
         # print constraints
