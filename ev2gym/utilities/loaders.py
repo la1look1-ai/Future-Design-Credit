@@ -403,7 +403,7 @@ def load_electricity_prices(env) -> Tuple[np.ndarray, np.ndarray]:
     if env.price_data is None:
         # else load historical prices
         file_path = pkg_resources.resource_filename(
-            'ev2gym', 'data/Netherlands_day-ahead-2015-2024.csv')
+            'ev2gym', 'data/Korea_KEPCO_EV_high_voltage_2022_ev2gym.csv')
         env.price_data = pd.read_csv(file_path, sep=',', header=0)
         # import polars as pl
         # env.price_data = pl.read_csv(file_path).to_pandas()
